@@ -1,103 +1,54 @@
+# train_and_save_model.py
+
 import pandas as pd
-import nltk
-print(nltk.__version__)  # Should display the installed version
-import nltk
-nltk.download('popular')  # Downloads commonly used packages
-nltk.download('punkt_tab')        # For tokenizing text
-nltk.download('stopwords')    # For removing common words like "is", "the", etc.
-nltk.download('wordnet')      # For lemmatizing words
-from nltk.corpus import stopwords
-from nltk.stem import WordNetLemmatizer
 import re
-import string   
-
-# Load data
-df = pd.read_csv('data/Amazon Review Data Web Scrapping - Amazon Review Data Web Scrapping.csv')
-
-# Combine Review_Header and Review_Text into one column
-df['Combined_Review'] = df['Review_Header'].fillna('') + ' ' + df['Review_text'].fillna('')
-
-# Set up stop words and lemmatizer
-stop_words = set(stopwords.words('english'))
-lemmatizer = WordNetLemmatizer()
-
-# Define a function to clean the text
-def clean_text(text):
-    if not isinstance(text, str):
-        return ""
-    
-    # Convert to lowercase
-    text = text.lower()
-    
-    # Remove numbers
-    text = re.sub(r'\d+', '', text)
-    
-    # Remove punctuation
-    text = text.translate(str.maketrans('', '', string.punctuation))
-    
-    # Tokenize text
-    tokens = nltk.word_tokenize(text)
-    
-    # Remove stopwords and lemmatize
-    tokens = [lemmatizer.lemmatize(word) for word in tokens if word not in stop_words]
-    
-    return " ".join(tokens)
-
-print(df['Combined_Review'].head())
-
-# Apply the cleaning function to each review
-df['Cleaned_Review'] = df['Combined_Review'].apply(clean_text)
-
-# Check unique values in the 'Own_Rating' column
-print(df['Rating'].unique())
-
-# Map ratings to sentiment categories
-def encode_sentiment(rating):
-    if rating >= 4:
-        return 'Positive'
-    elif rating == 3:
-        return 'Neutral'
-    else:
-        return 'Negative'
-
-# Apply the encoding function to the 'Own_Rating' column
-df['Sentiment'] = df['Rating'].apply(encode_sentiment)
-
-# Check the result
-print(df[['Rating', 'Sentiment']].head())
-
-from sklearn.feature_extraction.text import TfidfVectorizer
-
-# Initialize the TF-IDF Vectorizer
-tfidf_vectorizer = TfidfVectorizer(max_features=5000)
-
-# Fit and transform the cleaned reviews
-X_tfidf = tfidf_vectorizer.fit_transform(df['Cleaned_Review'])
-
-# Convert the result into a DataFrame for easier inspection
-X_tfidf_df = pd.DataFrame(X_tfidf.toarray(), columns=tfidf_vectorizer.get_feature_names_out())
-
-# Check the shape of the resulting DataFrame
-print(X_tfidf_df.shape)
-
+import nltk
+import joblib
+from nltk.corpus import stopwords
 from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.linear_model import LogisticRegression
 
-# Define the features (X) and target (y)
-X = X_tfidf
-y = df['Sentiment']
+# Download NLTK stopwords (only the first time)
+nltk.download('stopwords')
+stop_words = set(stopwords.words('english'))
 
-# Split the dataset into train and test sets (80% train, 20% test)
+# Load dataset
+data = pd.read_csv("D:/AI-Based-Customer-Sentiment-Analysis-main/AI-Based-Customer-Sentiment-Analysis-main/reviews.csv")
+data['Review_Header'] = data['Review_Header'].fillna('')
+data['Review_text'] = data['Review_text'].fillna('')
+data['Full_Review'] = data['Review_Header'] + " " + data['Review_text']
+
+# Clean text
+def clean_text(text):
+    text = re.sub(r'[^a-zA-Z ]', '', text)
+    text = text.lower()
+    words = text.split()
+    words = [word for word in words if word not in stop_words]
+    return " ".join(words)
+
+data['Cleaned_Review'] = data['Full_Review'].apply(clean_text)
+
+# Encode sentiment labels
+label_encoder = LabelEncoder()
+data['Sentiment_Label'] = label_encoder.fit_transform(data['Own_Rating'])
+
+# TF-IDF Vectorization
+vectorizer = TfidfVectorizer(max_features=5000)
+X = vectorizer.fit_transform(data['Cleaned_Review'])
+y = data['Sentiment_Label']
+
+# Train/Test split
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-# Check the shapes of the resulting sets
-print(f"Training set size: {X_train.shape}, Test set size: {X_test.shape}")
+# Train model
+model = LogisticRegression()
+model.fit(X_train, y_train)
 
-# Convert the TF-IDF data into a DataFrame for easy sharing
-X_tfidf_df = pd.DataFrame(X_tfidf.toarray(), columns=tfidf_vectorizer.get_feature_names_out())
+# Save model and preprocessing objects
+joblib.dump(model, 'sentiment_model.pkl')
+joblib.dump(vectorizer, 'tfidf_vectorizer.pkl')
+joblib.dump(label_encoder, 'label_encoder.pkl')
 
-# Save the features (X_tfidf) and target (y) to CSV
-X_tfidf_df.to_csv('preprocessed_tfidf_features.csv', index=False)
-y.to_csv('preprocessed_sentiment_labels.csv', index=False)
-
-# Confirm the files are saved
-print("Data saved successfully!")
+print("✅ Model, vectorizer, and label encoder saved successfully.")
