@@ -1,0 +1,91 @@
+# Import required libraries
+import pandas as pd
+import re
+import nltk
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+from nltk.corpus import stopwords
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
+
+# Download stopwords (only once)
+nltk.download('stopwords')
+stop_words = set(stopwords.words('english'))
+
+# Step 1: Load your dataset (update filename if needed)
+data = pd.read_csv("review.csv")
+
+# Step 2: Combine review header and text into one column
+data['Review_Header'] = data['Review_Header'].fillna('')
+data['Review_text'] = data['Review_text'].fillna('')
+data['Full_Review'] = data['Review_Header'] + " " + data['Review_text']
+
+# Step 3: Clean the review text
+def clean_text(text):
+    text = re.sub(r'[^a-zA-Z ]', '', text)  # Remove symbols/numbers
+    text = text.lower()  # Lowercase
+    words = text.split()  # Split into words
+    words = [word for word in words if word not in stop_words]  # Remove stopwords
+    return " ".join(words)
+
+data['Cleaned_Review'] = data['Full_Review'].apply(clean_text)
+
+# Step 4: Convert sentiment labels (Positive, Neutral, Negative) to numbers
+label_encoder = LabelEncoder()
+data['Sentiment_Label'] = label_encoder.fit_transform(data['Own_Rating'])
+
+# Step 5: Convert text to numbers using TF-IDF
+vectorizer = TfidfVectorizer(max_features=5000)
+X = vectorizer.fit_transform(data['Cleaned_Review'])  # Features
+y = data['Sentiment_Label']  # Target labels
+
+# Step 6: Split into training and testing sets
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# Step 7: Train the model (Logistic Regression)
+model = LogisticRegression()
+model.fit(X_train, y_train)
+
+# Step 8: Make predictions
+y_pred = model.predict(X_test)
+
+# Step 9: Show accuracy and performance
+accuracy = accuracy_score(y_test, y_pred)
+print("\n✅ Accuracy:", round(accuracy * 100, 2), "%\n")
+print("✅ Classification Report:\n", classification_report(y_test, y_pred, target_names=label_encoder.classes_))
+
+# Step 10: Confusion matrix plot
+conf_matrix = confusion_matrix(y_test, y_pred)
+plt.figure(figsize=(6, 4))
+sns.heatmap(conf_matrix, annot=True, fmt='d', cmap='Blues',
+            xticklabels=label_encoder.classes_,
+            yticklabels=label_encoder.classes_)
+plt.title("Confusion Matrix")
+plt.xlabel("Predicted")
+plt.ylabel("Actual")
+plt.tight_layout()
+plt.show()
+
+# Step 11: Bar chart - Actual sentiment distribution
+actual_counts = pd.Series(y_test).map(dict(enumerate(label_encoder.classes_))).value_counts()
+plt.figure(figsize=(5, 4))
+sns.barplot(x=actual_counts.index, y=actual_counts.values, palette='viridis')
+plt.title("Actual Sentiment Count")
+plt.xlabel("Sentiment")
+plt.ylabel("Count")
+plt.tight_layout()
+plt.show()
+
+# Step 12: Bar chart - Predicted sentiment distribution
+predicted_counts = pd.Series(y_pred).map(dict(enumerate(label_encoder.classes_))).value_counts()
+plt.figure(figsize=(5, 4))
+sns.barplot(x=predicted_counts.index, y=predicted_counts.values, palette='plasma')
+plt.title("Predicted Sentiment Count")
+plt.xlabel("Sentiment")
+plt.ylabel("Count")
+plt.tight_layout()
+plt.show()
